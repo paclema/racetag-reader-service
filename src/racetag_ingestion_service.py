@@ -24,6 +24,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--interactive", action="store_true", help="Allow typing CONTROL commands (stdin)")
     parser.add_argument("--raw", action="store_true", help="Print raw chunks/messages received on sockets")
     parser.add_argument("--init_commands_file", help="Path to file with configuration commands sent AFTER reader.events.bind once session id known (defaults to 'init_commands')")
+    parser.add_argument("--backend-url", help="Backend base URL to send events (e.g., http://localhost:8000)")
+    parser.add_argument("--backend-token", help="Optional Bearer token for backend auth")
+    parser.add_argument(
+        "--backend-transport",
+        choices=["http", "mock"],
+        default="http",
+        help="Type of Backend transport implementation to use; (http) or for testing (mock)",
+    )
     args = parser.parse_args(argv)
 
     client = SiritClient(
@@ -34,6 +42,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         colorize=not args.no_color,
         raw=args.raw,
         interactive=args.interactive,
+        backend_url=args.backend_url,
+        backend_token=args.backend_token,
+        backend_transport=args.backend_transport,
     )
     try:
         client.start()

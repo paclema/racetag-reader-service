@@ -13,10 +13,11 @@ from tag_tracker import TagTracker
 
 from utils import _ts, _color, _C, connect_socket
 from models import TagEvent, EventType
+from backend_client import BackendClient, HttpBackendClient, MockBackendClient
 
 
 class SiritClient:
-    def __init__(self, ip: str, control_port: int, event_port: int, init_commands_path: Optional[str], colorize: bool, raw: bool, interactive: bool):
+    def __init__(self, ip: str, control_port: int, event_port: int, init_commands_path: Optional[str], colorize: bool, raw: bool, interactive: bool, backend_url: Optional[str] = None, backend_token: Optional[str] = None, backend_transport: str = "http"):
         self.ip = ip
         self.control_port = control_port
         self.event_port = event_port
@@ -24,6 +25,9 @@ class SiritClient:
         self.colorize = colorize
         self.raw = raw
         self.interactive = interactive
+        self.backend_url = backend_url
+        self.backend_token = backend_token
+        self.backend_transport = backend_transport
 
         self.session = SessionState()
         self.tags = TagTracker()
@@ -31,14 +35,30 @@ class SiritClient:
         self.event_sock: Optional[socket.socket] = None
         self._control_lock = threading.Lock()
         self._stop_event = threading.Event()
+        # Backend client (HTTP/WS/MQTT)
+        self._backend: Optional[BackendClient] = None
 
     def start(self):
+        # Initialize backend client
+        if self.backend_transport == "mock":
+            self._backend = MockBackendClient()
+        else:
+            if not self.backend_url:
+                raise RuntimeError("Backend URL must be provided when using HTTP transport")
+            self._backend = HttpBackendClient(url=self.backend_url, token=self.backend_token, batch_size=10, flush_interval_ms=50)
+        self._backend.start()
+
+        # Start control socket
         self.control_sock = connect_socket(self.ip, self.control_port, "CONTROL")
         if not self.control_sock:
             raise RuntimeError("CONTROL connection failed")
         threading.Thread(target=self._recv_loop, args=("CONTROL", self.control_sock), daemon=True).start()
+
+        # Enable interactive stdin commands if requested
         if self.interactive:
             threading.Thread(target=self._stdin_loop, daemon=True).start()
+
+        # Start event socket
         self.event_sock = connect_socket(self.ip, self.event_port, "EVENT")
         if not self.event_sock:
             raise RuntimeError("EVENT connection failed")
@@ -60,6 +80,11 @@ class SiritClient:
         except Exception:
             pass
         self._stop_event.set()
+        if self._backend:
+            try:
+                self._backend.stop()
+            except Exception:
+                pass
         for s in (self.control_sock, self.event_sock):
             try:
                 if s:
@@ -122,7 +147,7 @@ class SiritClient:
                     label = _color("ARRIVE", _C.GREEN) if self.colorize else "ARRIVE"
                     print(f"[{_ts()}] [{name}] [{label}] {msg}")
                     self._print_tag_id(ev.tag_id)
-                    self._maybe_print_tag(name, msg)
+                    self._emit_event(ev)
                 return
             if "event.tag.depart" in low:
                 ev = self._parse_event_message("depart", msg)
@@ -131,7 +156,7 @@ class SiritClient:
                     label = _color("DEPART", _C.RED) if self.colorize else "DEPART"
                     print(f"[{_ts()}] [{name}] [{label}] {msg}")
                     self._print_tag_id(ev.tag_id)
-                    self._maybe_print_tag(name, msg)
+                    self._emit_event(ev)
                 return
         base = f"[{_ts()}] [{name}] {msg}"
         if name.upper() == "EVENT":
@@ -206,7 +231,14 @@ class SiritClient:
         else:
             prefix = f"[{_color('TAG', _C.DIM)}]" if self.colorize else "[TAG]"
         print(f"[{_ts()}] [EVENT] {prefix} TAG={tag_hex}")
-        print(f"[{_ts()}] [{name}] {prefix} TAG={tag_hex}")
+
+    def _emit_event(self, ev: TagEvent) -> None:
+        if not self._backend:
+            return
+        try:
+            self._backend.send(ev)
+        except Exception as e:
+            print(f"[{_ts()}] [BACKEND] error queueing event: {e}")
 
     def _parse_event_message(self, event_type: EventType, msg: str) -> Optional[TagEvent]:
         """Parse a raw EVENT line into a TagEvent by first building a typed event data model.
