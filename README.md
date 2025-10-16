@@ -1,4 +1,4 @@
-# sportHub RFID Reader Client (Sirit INfinity 510)
+# RaceTag Reader Service 
 
 Minimal TCP client for the Sirit INfinity 510 reader focused on the core flow:
 
@@ -6,6 +6,7 @@ Minimal TCP client for the Sirit INfinity 510 reader focused on the core flow:
 - Connects to the EVENT socket (port 50008) to receive configured tag events.
 - Binds events and then applies commands from the init file (commonly: register arrive/depart and reporting fields).
 - Prints concise debug lines when tag events occur.
+- Sends events to a backend over HTTP (with Bearer token support) or uses a mock backend for testing.
 
 ## Quick start
 
@@ -13,13 +14,21 @@ Open a terminal under src/ and run:
 
 ```bash
 # By default it will try to read 'init_commands' file
-python3 racetag_ingestion_service.py --ip 192.168.1.130
+python3 racetag_reader_service.py --ip 192.168.1.130
 
 # Provide a custom init commands file
-python3 racetag_ingestion_service.py --ip 192.168.1.130 --init_commands_file init_commands.txt
+python3 racetag_reader_service.py --ip 192.168.1.130 --init_commands_file init_commands.txt
 
 # With interactive CONTROL and raw socket debug
-python3 racetag_ingestion_service.py --ip 192.168.1.130 --interactive --raw
+python3 racetag_reader_service.py --ip 192.168.1.130 --interactive --raw
+
+# Send events to a backend over HTTP (backend Bearer token will be used if provided)
+python3 racetag_reader_service.py --ip 192.168.1.130 \
+	--backend-url http://localhost:8000 --backend-token mytoken
+
+# Use a mock backend client (no network, logs events locally)
+python3 racetag_reader_service.py --ip 192.168.1.130 \
+	--backend-transport mock
 ```
 
 Expected logs on success (example):
@@ -47,6 +56,15 @@ Expected logs on success (example):
 ```
 
 Press Ctrl-C to stop. On exit, the reader is set to standby automatically.
+
+### Backend integration
+
+Flags related to backend delivery:
+- `--backend-url`: Backend base URL to send events (e.g., http://localhost:8000). Enables HTTP transport by default.
+- `--backend-token`: Optional Bearer token for backend auth.
+- `--backend-transport`: Transport to use when sending events. Options:
+	- `http` (default): requires `--backend-url`.
+	- `mock`: no network; prints and stores events locally for testing.
 
 ## Configuration file
 
