@@ -13,13 +13,13 @@ Open a terminal under src/ and run:
 
 ```bash
 # By default it will try to read 'init_commands' file
-python3 server.py --ip 192.168.1.130
+python3 racetag_ingestion_service.py --ip 192.168.1.130
 
 # Provide a custom init commands file
-python3 server.py --ip 192.168.1.130 --init_commands_file init_commands.txt
+python3 racetag_ingestion_service.py --ip 192.168.1.130 --init_commands_file init_commands.txt
 
 # With interactive CONTROL and raw socket debug
-python3 server.py --ip 192.168.1.130 --interactive --raw
+python3 racetag_ingestion_service.py --ip 192.168.1.130 --interactive --raw
 ```
 
 Expected logs on success (example):
