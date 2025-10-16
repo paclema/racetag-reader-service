@@ -38,6 +38,9 @@ class SiritClient:
         # Backend client (HTTP/WS/MQTT)
         self._backend: Optional[BackendClient] = None
 
+        # Reader identity
+        self.reader_serial: Optional[str] = None
+
     def start(self):
         # Initialize backend client
         if self.backend_transport == "mock":
@@ -53,6 +56,8 @@ class SiritClient:
         if not self.control_sock:
             raise RuntimeError("CONTROL connection failed")
         threading.Thread(target=self._recv_loop, args=("CONTROL", self.control_sock), daemon=True).start()
+        # Request reader serial number immediately after CONTROL is up
+        self._send_control(["info.serial_number"])
 
         # Enable interactive stdin commands if requested
         if self.interactive:
@@ -165,6 +170,12 @@ class SiritClient:
         elif name.upper() == "CONTROL":
             tag = "CTRL"
             base = f"[{_ts()}] [{name}] [{_color(tag, _C.YELLOW) if self.colorize else tag}] {msg}"
+            # Capture reader serial number once when still unknown
+            if self.reader_serial is None:
+                m = re.match(r"ok\s+([0-9A-Fa-f]{8,})\b", msg.strip())
+                if m:
+                    self.reader_serial = m.group(1).upper()
+                    print(f"[{_ts()}] [READER] serial_number={self.reader_serial}")
         print(base)
 
     def _send_control(self, cmds: List[str]):
@@ -263,6 +274,8 @@ class SiritClient:
             "tag_id": tag_hex,
             "session_id": self.session.id,
         }
+        if self.reader_serial:
+            fields["reader_serial"] = self.reader_serial
         if "antenna" in kv:
             fields["antenna"] = int(kv["antenna"])
         if "rssi" in kv:

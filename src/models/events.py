@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any, Literal
 @dataclass(frozen=True)
 class TagEvent:
     source: str              # e.g., "sirit-510"
+    reader_serial: str       # reader serial number
     reader_ip: str           # reader IP
     timestamp: str           # ISO8601 UTC string with milliseconds, e.g., 2025-10-16T10:20:30.123Z
     event_type: str          # "arrive" | "depart"
