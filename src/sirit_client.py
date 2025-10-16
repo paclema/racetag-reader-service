@@ -5,12 +5,14 @@ import socket
 import sys
 import threading
 import time
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
 
 from session_state import SessionState
 from tag_tracker import TagTracker
 
 from utils import _ts, _color, _C, connect_socket
+from models import TagEvent, EventType
 
 
 class SiritClient:
@@ -115,18 +117,20 @@ class SiritClient:
                     self._maybe_bind_and_config()
             low = msg.lower()
             if "event.tag.arrive" in low:
-                tag = self._extract_tag_id(msg)
-                if tag and self.tags.mark_present(tag):
+                ev = self._parse_event_message("arrive", msg)
+                if ev and self.tags.mark_present(ev.tag_id):
                     label = _color("ARRIVE", _C.GREEN) if self.colorize else "ARRIVE"
                     print(f"[{_ts()}] [{name}] [{label}] {msg}")
+                    self._print_tag_id(ev.tag_id)
                     self._maybe_print_tag(name, msg)
                 return
             if "event.tag.depart" in low:
-                tag = self._extract_tag_id(msg)
-                if tag:
-                    self.tags.mark_absent(tag)
+                ev = self._parse_event_message("depart", msg)
+                if ev:
+                    self.tags.mark_absent(ev.tag_id)
                     label = _color("DEPART", _C.RED) if self.colorize else "DEPART"
                     print(f"[{_ts()}] [{name}] [{label}] {msg}")
+                    self._print_tag_id(ev.tag_id)
                     self._maybe_print_tag(name, msg)
                 return
         base = f"[{_ts()}] [{name}] {msg}"
@@ -137,7 +141,6 @@ class SiritClient:
             tag = "CTRL"
             base = f"[{_ts()}] [{name}] [{_color(tag, _C.YELLOW) if self.colorize else tag}] {msg}"
         print(base)
-        self._maybe_print_tag(name, msg)
 
     def _send_control(self, cmds: List[str]):
         if not self.control_sock:
@@ -179,21 +182,65 @@ class SiritClient:
             print(f"[{_ts()}] [SESSION] configuration failed: {e}")
 
     @staticmethod
-    def _extract_tag_id(msg: str) -> Optional[str]:
-        m = re.search(r"tag_id\s*=\s*0x([0-9A-Fa-f]{8,64})", msg)
-        return m.group(1) if m else None
+    def _extract_kv(msg: str) -> Dict[str, str]:
+        """Extract simple key=value pairs from a message into a dict with lowercase keys.
 
-    def _maybe_print_tag(self, name: str, msg: str):
-        tag = self._extract_tag_id(msg)
-        if not tag:
-            return
-        tag_hex = tag.upper()
+        Values are returned as raw strings (without surrounding punctuation)."""
+        pairs: Dict[str, str] = {}
+        # Match tokens like key = value (value up to whitespace)
+        for k, v in re.findall(r"([A-Za-z0-9_.]+)\s*=\s*([^\s]+)", msg):
+            # Strip trailing commas or periods often present in log-style lines
+            v = v.strip().rstrip(",.")
+            pairs[k.lower()] = v
+        return pairs
+
+    @staticmethod
+    def _now_iso() -> str:
+        # ISO8601 UTC with milliseconds and trailing Z
+        return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+    def _print_tag_id(self, tag_hex: str):
         is_new = self.tags.record_seen(tag_hex)
         if is_new:
             prefix = f"[TAG][{_color('NEW', _C.GREEN)}]" if self.colorize else "[TAG][NEW]"
         else:
             prefix = f"[{_color('TAG', _C.DIM)}]" if self.colorize else "[TAG]"
+        print(f"[{_ts()}] [EVENT] {prefix} TAG={tag_hex}")
         print(f"[{_ts()}] [{name}] {prefix} TAG={tag_hex}")
+
+    def _parse_event_message(self, event_type: EventType, msg: str) -> Optional[TagEvent]:
+        """Parse a raw EVENT line into a TagEvent by first building a typed event data model.
+
+        - arrive: supports first (ISO string), antenna, rssi (all optional except tag_id)
+        - depart: supports antenna, rssi (optional), tag_id required
+        Returns None if tag_id cannot be found.
+        """
+        kv = self._extract_kv(msg)
+        tag_raw = kv.get("tag_id")
+        if not tag_raw:
+            return None
+        tag_hex = tag_raw.upper()
+        if tag_hex.startswith("0X"):
+            tag_hex = tag_hex[2:]
+
+        fields: Dict[str, object] = {
+            "source": "sirit-510",
+            "reader_ip": self.ip,
+            "timestamp": self._now_iso(),
+            "event_type": event_type,
+            "tag_id": tag_hex,
+            "session_id": self.session.id,
+        }
+        if "antenna" in kv:
+            fields["antenna"] = int(kv["antenna"])
+        if "rssi" in kv:
+            fields["rssi"] = int(kv["rssi"])
+        if event_type == "arrive" and "first" in kv:
+            fields["first"] = kv["first"]
+        if event_type == "depart" and "last" in kv:
+            fields["last"] = kv["last"]
+
+        return TagEvent(**fields)
 
     def _stdin_loop(self):
         while not self._stop_event.is_set():
