@@ -35,6 +35,8 @@ class SiritClient:
         self.event_sock: Optional[socket.socket] = None
         self._control_lock = threading.Lock()
         self._stop_event = threading.Event()
+        self._stopping = threading.Event()
+        self._stopped = threading.Event()
         # Backend client (HTTP/WS/MQTT)
         self._backend: Optional[BackendClient] = None
 
@@ -79,6 +81,9 @@ class SiritClient:
             self.stop()
 
     def stop(self):
+        if self._stopping.is_set():
+            return
+        self._stopping.set()
         try:
             if self.control_sock:
                 self._send_control(["setup.operating_mode=standby"])
@@ -101,6 +106,11 @@ class SiritClient:
                     s.close()
             except Exception:
                 pass
+        self._stopped.set()
+
+    def request_stop(self) -> None:
+        """Signal the main loop to stop; used by external signal handlers."""
+        self._stop_event.set()
 
     def _recv_loop(self, name: str, sock: socket.socket):
         buffer = ""

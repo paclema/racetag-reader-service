@@ -12,6 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Ensure Docker sends SIGTERM (explicit)
+STOPSIGNAL SIGTERM
+
 # Create non-root user
 RUN useradd -u 10001 -m appuser
 WORKDIR /app

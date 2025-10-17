@@ -8,6 +8,7 @@ Racetag Ingestion Service
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 from typing import List, Optional
 import os
@@ -58,6 +59,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         backend_token=args.backend_token,
         backend_transport=args.backend_transport,
     )
+    
+    # Install signal handlers for graceful shutdown in containers (SIGTERM) and terminals (SIGINT)
+    def _on_signal(signum, frame):  # noqa: ARG001
+        name = {
+            getattr(signal, 'SIGINT', None): 'SIGINT',
+            getattr(signal, 'SIGTERM', None): 'SIGTERM',
+            getattr(signal, 'SIGQUIT', None): 'SIGQUIT',
+        }.get(signum, str(signum))
+        print(f"[{_ts()}] Received {name}; stopping...")
+        client.request_stop()
+
+    for sig in (getattr(signal, 'SIGINT', None), getattr(signal, 'SIGTERM', None), getattr(signal, 'SIGQUIT', None)):
+        if sig is not None:
+            try:
+                signal.signal(sig, _on_signal)
+            except Exception:
+                pass
+
+
     try:
         client.start()
         client.run_forever()
