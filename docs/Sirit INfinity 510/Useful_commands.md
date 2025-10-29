@@ -1,5 +1,5 @@
 
-# Useful Commands for Sirit Infinity 510 RFID Reader
+# Useful Commands for Sirit INfinity 510 RFID Reader
 
 To set the timezone
 ```
