@@ -10,8 +10,13 @@ Minimal TCP client for the Sirit INfinity 510 reader focused on the core flow:
 
 ## Quick start
 
-Open a terminal under src/ and run:
+The fastest and recommended way to try the service is using Docker Compose. Configure the `.env` file first, then run the containerized service building the image if needed (see section [Docker and Docker Compose](#docker-and-docker-compose) below):
 
+```bash
+docker compose up --build -d
+```
+
+Alternatively, you can run it locally:
 ```bash
 cd ./src
 # By default it will try to read 'init_commands' file
@@ -72,6 +77,9 @@ cp .env.example .env
 ```bash
 docker compose build
 docker compose up
+
+# Or both build and run simultaneously in detached mode:
+docker compose up --build -d
 ```
 
 Notes:
