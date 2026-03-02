@@ -8,6 +8,29 @@ Minimal TCP client for the Sirit INfinity 510 reader focused on the core flow:
 - Prints concise debug lines when tag events occur.
 - Sends events to a backend over HTTP (with Bearer token support) or uses a mock backend for testing.
 
+## Reader Connection
+The reader must be connected in the same network as the machine running the service.
+You can connect the reader using an ethernet cable to the same LAN as the machine running the service, or if you run the service on a laptop, you can connect the reader directly to the laptop using its ethernet interface. In this case, you will need to configure your laptop network interface to bridge the Wi-Fi and Ethernet connections, so the ethernet interface can provide an IP address to the reader and make it accessible for the service.
+
+On windows you can follow the next steps:
+1. Connect the reader to your laptop using an ethernet cable.
+2. Press `Win + R`, type `ncpa.cpl` and press Enter to open the Network Connections window.
+3. Select the Wi-Fi interface and right-click to select "Properties".
+4. Go to the "Sharing" tab and check "Allow other network users to connect through this computer's Internet connection".
+5. In the "Home networking connection" dropdown, select the Ethernet interface connected to the reader.
+6. Click "OK" to save the settings.
+
+Now Windows will set the Ethernet interface to a static IP (usually 192.168.137.1) and enable Internet Connection Sharing. The reader should now be accessible at an IP address in the same subnet (usually 192.168.137.x). You can run a powershell terminal to find the readers IP address using the arp command:
+
+```powershell
+arp -a
+
+# or search using a reader-specific MAC address prefix, for example:
+arp -a | findstr "00-17-9e-00-37-d2"
+```
+Once you have the reader's IP address, you can use it to configure the service (e.g., set `READER_IP` in `.env` or use `--ip` flag).
+
+
 ## Quick start
 
 The fastest and recommended way to try the service is using Docker Compose. Configure the `.env` file first, then run the containerized service building the image if needed (see section [Docker and Docker Compose](#docker-and-docker-compose) below):
